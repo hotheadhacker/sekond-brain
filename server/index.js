@@ -157,4 +157,8 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);
+  console.log(`API available at http://${HOST}:${PORT}/api/items`);
+}).on('error', (err) => {
+  console.error('Server failed to start:', err.message);
+  process.exit(1);
 });
