@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Editor from './components/Editor';
 import BacklinksPanel from './components/BacklinksPanel';
@@ -38,6 +37,14 @@ export default function App() {
     }
   }, [refresh, selectedId]);
 
+  const handleCreated = useCallback(async (id) => {
+    refresh();
+    const item = await fetchItem(id);
+    setSelectedId(id);
+    setSelectedItem(item);
+    setShowGraph(false);
+  }, [refresh]);
+
   return (
     <div className="app-layout">
       <CommandPalette onSelectItem={handleSelectItem} onNavigate={handleNavigate} onGraphView={() => setShowGraph(true)} />
@@ -57,7 +64,7 @@ export default function App() {
       </div>
 
       <div className="center-panel">
-        <Capture onCreated={handleMutate} />
+        <Capture onCreated={handleCreated} />
         {showGraph ? (
           <GraphView onNavigate={handleNavigate} />
         ) : selectedItem ? (
@@ -81,7 +88,7 @@ export default function App() {
           <div className="empty-state-main">
             <div className="empty-state-icon-lg">Second Brain</div>
             <div className="empty-state-desc">
-              Select an item from the sidebar or press <kbd>Ctrl+P</kbd> to search and create.
+              Select an item from the sidebar, use the capture bar above, or press <kbd>Ctrl+P</kbd> to search and create.
             </div>
             <div className="empty-state-hint">
               Use <strong>t:</strong> for tasks, <strong>n:</strong> for notes, <strong>i:</strong> for ideas

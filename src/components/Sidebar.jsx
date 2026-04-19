@@ -23,6 +23,7 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
   const [newTitle, setNewTitle] = useState('');
   const [newType, setNewType] = useState('note');
   const [newMode, setNewMode] = useState('life');
+  const [creating, setCreating] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -34,21 +35,32 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
     fetchItems(filters).then(setItems);
   }, [refreshKey, modeFilter, typeFilter, statusFilter, search]);
 
+  useEffect(() => {
+    if (showNewForm && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [showNewForm]);
+
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
-    const item = await createItem({
-      type: newType,
-      title: newTitle.trim(),
-      content: '',
-      mode: newMode,
-      tags: [],
-      status: newType === 'task' ? 'active' : 'active',
-    });
-    setNewTitle('');
-    setShowNewForm(false);
-    onMutate();
-    onSelectItem(item.id);
+    if (!newTitle.trim() || creating) return;
+    setCreating(true);
+    try {
+      const item = await createItem({
+        type: newType,
+        title: newTitle.trim(),
+        content: '',
+        mode: newMode,
+        tags: [],
+        status: 'active',
+      });
+      setNewTitle('');
+      setShowNewForm(false);
+      onMutate();
+      onSelectItem(item.id);
+    } finally {
+      setCreating(false);
+    }
   };
 
   const groupedItems = {};
@@ -63,7 +75,13 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
     <div className="sidebar">
       <div className="sidebar-header">
         <h2 className="sidebar-logo">Second Brain</h2>
-        <button className="sidebar-new-btn" onClick={() => { setShowNewForm(!showNewForm); setNewTitle(''); }} title="New item">+</button>
+        <button
+          className="sidebar-new-btn"
+          onClick={() => { setShowNewForm(!showNewForm); setNewTitle(''); }}
+          title="New item"
+        >
+          +
+        </button>
       </div>
 
       {showNewForm && (
@@ -75,6 +93,7 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
             onChange={(e) => setNewTitle(e.target.value)}
             placeholder="Title..."
             autoFocus
+            disabled={creating}
           />
           <div className="sidebar-new-row">
             <select value={newType} onChange={(e) => setNewType(e.target.value)} className="meta-select-sm">
@@ -92,7 +111,9 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
               <option value="money">Money</option>
               <option value="dream">Dream</option>
             </select>
-            <button type="submit" className="sidebar-new-submit">Create</button>
+            <button type="submit" className="sidebar-new-submit" disabled={!newTitle.trim() || creating}>
+              {creating ? '...' : 'Create'}
+            </button>
           </div>
         </form>
       )}
@@ -154,7 +175,10 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
           );
         })}
         {items.length === 0 && (
-          <div className="sidebar-empty">No items found</div>
+          <div className="sidebar-empty">
+            <div>No items yet</div>
+            <div style={{ fontSize: '0.75rem', marginTop: 4 }}>Click <strong>+</strong> above to create one</div>
+          </div>
         )}
       </div>
     </div>

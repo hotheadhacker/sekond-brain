@@ -376,6 +376,27 @@ body {
   border-color: var(--accent);
 }
 
+.capture-submit {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.capture-submit:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.capture-submit:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .meta-select-sm {
   background: var(--surface2);
   border: 1px solid var(--border);

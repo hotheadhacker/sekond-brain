@@ -6,6 +6,7 @@ const PREFIX_MAP = { 't:': 'task', 'n:': 'note', 'i:': 'idea' };
 export default function Capture({ onCreated }) {
   const [value, setValue] = useState('');
   const [mode, setMode] = useState('life');
+  const [creating, setCreating] = useState(false);
   const inputRef = useRef(null);
 
   const handleSubmit = async (e) => {
@@ -23,9 +24,14 @@ export default function Capture({ onCreated }) {
       }
     }
 
-    await createItem({ type, title, content: '', mode, tags: [], status: type === 'task' ? 'active' : 'active' });
-    setValue('');
-    onCreated();
+    setCreating(true);
+    try {
+      const item = await createItem({ type, title, content: '', mode, tags: [], status: 'active' });
+      setValue('');
+      if (onCreated) onCreated(item.id);
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -35,7 +41,8 @@ export default function Capture({ onCreated }) {
         className="capture-inline-input"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Quick capture... (t: task, n: note, i: idea) or Ctrl+P for command palette"
+        placeholder="Quick capture... (t: task, n: note, i: idea)"
+        disabled={creating}
       />
       <select value={mode} onChange={(e) => setMode(e.target.value)} className="meta-select-sm">
         <option value="life">Life</option>
@@ -44,6 +51,9 @@ export default function Capture({ onCreated }) {
         <option value="money">Money</option>
         <option value="dream">Dream</option>
       </select>
+      <button type="submit" className="capture-submit" disabled={!value.trim() || creating}>
+        {creating ? '...' : 'Add'}
+      </button>
     </form>
   );
 }
