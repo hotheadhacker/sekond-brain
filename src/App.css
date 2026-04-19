@@ -423,6 +423,15 @@ body {
   padding: 0;
 }
 
+.editor-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text3);
+  font-size: 0.9rem;
+}
+
 .editor-title-row {
   display: flex;
   align-items: center;

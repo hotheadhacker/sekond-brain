@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -14,85 +14,78 @@ const lowlight = createLowlight(common);
 
 const WIKILINK_RE = /\[\[([a-f0-9-]{36})\|([^\]]+)\]\]/g;
 
-function contentToMarkdown(content, items) {
-  if (!content) return '';
-  let md = content;
-  md = md.replace(WIKILINK_RE, (_, id, title) => {
-    return `[$${title}$](${id})`;
+function contentToHtml(content) {
+  if (!content) return '<p></p>';
+  let html = content;
+  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  html = html.replace(WIKILINK_RE, (_, id, title) => {
+    return `<a data-wikilink href="#item-${id}">${title}</a>`;
   });
-  return md;
+  html = html.replace(/\n{2,}/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  if (!html.startsWith('<')) html = `<p>${html}</p>`;
+  return html;
 }
 
-function markdownToContent(md) {
-  if (!md) return '';
-  let content = md;
-  content = content.replace(/\[\$([^\$]+)\$\]\(([^)]+)\)/g, (_, title, id) => {
+function htmlToContent(html) {
+  if (!html) return '';
+  let content = html;
+  content = content.replace(/<a[^>]*data-wikilink[^>]*href="#item-([^"]*)"[^>]*>([^<]*)<\/a>/g, (_, id, title) => {
     return `[[${id}|${title}]]`;
   });
-  return content;
+  content = content.replace(/<br\s*\/?>/g, '\n');
+  content = content.replace(/<\/p>\s*<p>/g, '\n\n');
+  content = content.replace(/<[^>]+>/g, '');
+  content = content.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  content = content.replace(/&nbsp;/g, ' ');
+  return content.trim();
 }
-
-const WikilinkExtension = Link.extend({
-  name: 'wikilink',
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      id: { default: null },
-      href: { default: null },
-      target: { default: '_self' },
-    };
-  },
-  parseHTML() {
-    return [{ tag: 'a[data-wikilink]' }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ['a', { ...HTMLAttributes, 'data-wikilink': '', class: 'wikilink' }, 0];
-  },
-});
 
 export default function Editor({ item, items, onUpdate, onNavigate }) {
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef(null);
 
-  const initialContent = contentToMarkdown(item.content, items);
-
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ codeBlock: false }),
       Placeholder.configure({ placeholder: 'Start writing... use [[ to link notes' }),
-      WikilinkExtension.configure({ openOnClick: false }),
+      Link.configure({ openOnClick: false, HTMLAttributes: { class: 'wikilink' } }),
       TaskList,
       TaskItem.configure({ nested: true }),
       Highlight,
       CodeBlockLowlight.configure({ lowlight }),
     ],
-    content: initialContent,
+    content: contentToHtml(item.content),
     onUpdate: ({ editor }) => {
       clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        handleSave(editor.getMarkdown());
+        handleSave(editor.getHTML());
       }, 800);
     },
   }, [item.id]);
 
   useEffect(() => {
     if (editor && !editor.isDestroyed) {
-      const newContent = contentToMarkdown(item.content, items);
-      if (editor.getMarkdown() !== newContent) {
-        editor.commands.setContent(newContent || '');
+      const newHtml = contentToHtml(item.content);
+      if (editor.getHTML() !== newHtml) {
+        editor.commands.setContent(newHtml, false);
       }
     }
   }, [item.id]);
 
-  const handleSave = async (markdown) => {
+  const handleSave = async (html) => {
     setSaving(true);
-    const content = markdownToContent(markdown);
-    await updateItem(item.id, { content });
-    if (onUpdate) onUpdate();
+    try {
+      const content = htmlToContent(html);
+      await updateItem(item.id, { content });
+      if (onUpdate) onUpdate();
+    } catch (e) {
+      console.error('Save failed:', e);
+    }
     setSaving(false);
   };
 
-  const handleTitleChange = async (e) => {
+  const handleTitleChange = (e) => {
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       await updateItem(item.id, { title: e.target.value });
@@ -116,13 +109,16 @@ export default function Editor({ item, items, onUpdate, onNavigate }) {
     if (onUpdate) onUpdate();
   };
 
-  const handleTagsChange = async (e) => {
-    const tags = e.target.value.split(',').map(t => t.trim()).filter(Boolean);
-    await updateItem(item.id, { tags });
-    if (onUpdate) onUpdate();
+  const handleTagsChange = (e) => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      const tags = e.target.value.split(',').map(t => t.trim()).filter(Boolean);
+      await updateItem(item.id, { tags });
+      if (onUpdate) onUpdate();
+    }, 500);
   };
 
-  if (!editor) return null;
+  if (!editor) return <div className="editor-loading">Loading editor...</div>;
 
   return (
     <div className="editor-area">
@@ -138,8 +134,8 @@ export default function Editor({ item, items, onUpdate, onNavigate }) {
         )}
         <input
           className="editor-title"
-          value={item.title}
-          onChange={handleTitleChange}
+          defaultValue={item.title}
+          onBlur={handleTitleChange}
           placeholder="Untitled"
         />
       </div>
@@ -182,15 +178,15 @@ export default function Editor({ item, items, onUpdate, onNavigate }) {
         <button onClick={() => editor.chain().focus().setHorizontalRule().run()}>HR</button>
       </div>
 
-      <div className="editor-content" onClick={() => editor.commands.focus()}>
+      <div className="editor-content">
         <EditorContent editor={editor} />
       </div>
 
       <div className="editor-footer">
         <input
           className="editor-tags"
-          value={item.tags.join(', ')}
-          onChange={handleTagsChange}
+          defaultValue={item.tags.join(', ')}
+          onBlur={handleTagsChange}
           placeholder="Tags (comma separated)"
         />
       </div>
