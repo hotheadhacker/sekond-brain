@@ -45,6 +45,20 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_id)
 `);
 
+// Migrations: add columns that may not exist in older databases
+const existingCols = new Set(
+  db.prepare("PRAGMA table_info(items)").all().map(c => c.name)
+);
+if (!existingCols.has('status')) {
+  db.exec("ALTER TABLE items ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+}
+if (!existingCols.has('folder')) {
+  db.exec("ALTER TABLE items ADD COLUMN folder TEXT NOT NULL DEFAULT ''");
+}
+if (!existingCols.has('agent_id')) {
+  db.exec("ALTER TABLE items ADD COLUMN agent_id TEXT");
+}
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_items_mode ON items(mode)
 `);
