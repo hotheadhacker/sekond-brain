@@ -1,0 +1,83 @@
+{
+  "name": "problem-solve",
+  "version": "1.0.0",
+  "description": "Structured problem-solving skill. Create, update, and track problems through a 5-step decision framework.",
+  "base_url": "/api",
+  "auth": "none",
+  "framework": {
+    "description": "Every problem item uses a structured JSON content format with 5 fields. This forces clear thinking and tracks decisions over time.",
+    "fields": {
+      "problem": "What is the problem? (clear, specific statement)",
+      "why": "Why does this problem exist? (root cause analysis)",
+      "solutions": "Possible solutions (brainstorm, numbered list recommended)",
+      "action": "Chosen action — which solution did you pick and why?",
+      "outcome": "What happened? (filled in after executing the action)"
+    }
+  },
+  "endpoints": {
+    "create_problem": {
+      "method": "POST",
+      "path": "/items",
+      "description": "Create a new problem entry with the structured template",
+      "body": {
+        "type": { "type": "string", "const": "problem", "required": true },
+        "title": { "type": "string", "required": true, "description": "Short problem title" },
+        "content": {
+          "type": "string",
+          "required": true,
+          "description": "JSON string with problem template fields",
+          "format": "JSON",
+          "schema": {
+            "problem": "string — the problem statement",
+            "why": "string — root cause",
+            "solutions": "string — possible solutions (numbered list)",
+            "action": "string — chosen action (can be empty initially)",
+            "outcome": "string — result (can be empty initially)"
+          }
+        },
+        "mode": { "type": "string", "required": false, "default": "life" },
+        "tags": { "type": "array[string]", "required": false },
+        "agent_id": { "type": "string", "required": false }
+      },
+      "returns": "Created problem item"
+    },
+    "update_problem": {
+      "method": "PUT",
+      "path": "/items/:id",
+      "description": "Update a problem — usually to add action or outcome",
+      "body": {
+        "content": {
+          "type": "string",
+          "description": "Updated JSON string with problem template fields"
+        }
+      },
+      "returns": "Updated problem item"
+    }
+  },
+  "examples": [
+    {
+      "description": "Create a new problem",
+      "call": "POST /api/items",
+      "body": {
+        "type": "problem",
+        "title": "Context switching friction",
+        "content": "{\"problem\":\"Switching between life modes loses momentum\",\"why\":\"No clear boundaries or transitions between contexts\",\"solutions\":\"1. Mode-specific views\\n2. Ritual prompts\\n3. Focus timers\",\"action\":\"Build mode-specific views first\",\"outcome\":\"\"}",
+        "mode": "life"
+      }
+    },
+    {
+      "description": "Update outcome after action",
+      "call": "PUT /api/items/:id",
+      "body": {
+        "content": "{\"problem\":\"Switching between life modes loses momentum\",\"why\":\"No clear boundaries or transitions between contexts\",\"solutions\":\"1. Mode-specific views\\n2. Ritual prompts\\n3. Focus timers\",\"action\":\"Build mode-specific views first\",\"outcome\":\"Mode views reduced context-switch time by ~40%\"}"
+      }
+    }
+  ],
+  "workflow": [
+    "1. Agent identifies a problem from the user's input",
+    "2. Agent creates a problem item: POST /api/items with type='problem' and content as JSON",
+    "3. Agent helps the user fill in: problem, why, solutions",
+    "4. Agent helps decide on an action",
+    "5. Later, the agent or user updates the outcome field via PUT /api/items/:id"
+  ]
+}

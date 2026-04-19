@@ -1,0 +1,56 @@
+{
+  "name": "capture",
+  "version": "1.0.0",
+  "description": "Quick-capture skill for instant thought entry. Optimized for low-friction capture with prefix-based type detection.",
+  "base_url": "/api",
+  "auth": "none",
+  "usage": {
+    "description": "Send a single string with an optional prefix to instantly create an item. The prefix determines the type. If no prefix is provided, it defaults to 'note'.",
+    "prefixes": {
+      "t:": "task — e.g. 't: Fix the deployment script'",
+      "n:": "note — e.g. 'n: API rate limits are 100/min'",
+      "i:": "idea — e.g. 'i: Add weekly digest email'"
+    },
+    "default_type": "note"
+  },
+  "endpoints": {
+    "capture": {
+      "method": "POST",
+      "path": "/items",
+      "description": "Quick-capture a thought. Parse the prefix to set type, then POST.",
+      "body": {
+        "type": { "type": "string", "description": "Auto-detected from prefix: t:→task, n:→note, i:→idea. Default: note" },
+        "title": { "type": "string", "description": "The text after the prefix" },
+        "content": { "type": "string", "description": "Optional additional detail. Default: empty string" },
+        "mode": { "type": "string", "description": "Life mode context. Default: 'life'" },
+        "tags": { "type": "array[string]", "description": "Optional tags. Default: []" },
+        "agent_id": { "type": "string", "description": "Agent ID for attribution" }
+      },
+      "returns": "Created item object"
+    }
+  },
+  "examples": [
+    {
+      "input": "t: Ship the landing page by Friday",
+      "call": "POST /items",
+      "body": { "type": "task", "title": "Ship the landing page by Friday", "content": "", "mode": "builder", "tags": [] }
+    },
+    {
+      "input": "n: SQLite WAL mode enables concurrent reads",
+      "call": "POST /items",
+      "body": { "type": "note", "title": "SQLite WAL mode enables concurrent reads", "content": "", "mode": "learning", "tags": [] }
+    },
+    {
+      "input": "i: Add a weekly review that summarizes all items",
+      "call": "POST /items",
+      "body": { "type": "idea", "title": "Add a weekly review that summarizes all items", "content": "", "mode": "builder", "tags": [] }
+    }
+  ],
+  "workflow": [
+    "1. Agent receives a quick thought from the user",
+    "2. Parse prefix: t: → task, n: → note, i: → idea, no prefix → note",
+    "3. Strip prefix from title",
+    "4. POST /api/items with type, title, and optional mode/tags/agent_id",
+    "5. Return confirmation with item ID"
+  ]
+}

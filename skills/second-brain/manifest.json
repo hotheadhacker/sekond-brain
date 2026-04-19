@@ -1,0 +1,97 @@
+{
+  "name": "second-brain",
+  "version": "1.0.0",
+  "description": "Full Second Brain management. Query, create, update, and delete items across all modes and types.",
+  "base_url": "/api",
+  "auth": "none",
+  "endpoints": {
+    "list_items": {
+      "method": "GET",
+      "path": "/items",
+      "description": "List all items with optional filters",
+      "params": {
+        "mode": { "type": "string", "required": false, "enum": ["learning", "builder", "money", "life", "dream"], "description": "Filter by life mode" },
+        "type": { "type": "string", "required": false, "enum": ["note", "task", "idea", "goal", "problem", "dream"], "description": "Filter by item type (comma-separated for multiple)" },
+        "q": { "type": "string", "required": false, "description": "Search term for title and content" },
+        "agent_id": { "type": "string", "required": false, "description": "Filter items by agent ID" }
+      },
+      "returns": "Array of item objects"
+    },
+    "get_item": {
+      "method": "GET",
+      "path": "/items/:id",
+      "description": "Get a single item by ID",
+      "params": {
+        "id": { "type": "string", "required": true, "description": "Item UUID" }
+      },
+      "returns": "Single item object"
+    },
+    "create_item": {
+      "method": "POST",
+      "path": "/items",
+      "description": "Create a new item",
+      "body": {
+        "type": { "type": "string", "required": false, "default": "note", "enum": ["note", "task", "idea", "goal", "problem", "dream"] },
+        "title": { "type": "string", "required": true },
+        "content": { "type": "string", "required": false, "default": "" },
+        "mode": { "type": "string", "required": false, "default": "life", "enum": ["learning", "builder", "money", "life", "dream"] },
+        "tags": { "type": "array[string]", "required": false, "default": [] },
+        "agent_id": { "type": "string", "required": false, "description": "ID of the agent creating this item" }
+      },
+      "returns": "Created item object with id, timestamps"
+    },
+    "update_item": {
+      "method": "PUT",
+      "path": "/items/:id",
+      "description": "Update an existing item",
+      "params": {
+        "id": { "type": "string", "required": true, "description": "Item UUID" }
+      },
+      "body": {
+        "type": { "type": "string", "required": false },
+        "title": { "type": "string", "required": false },
+        "content": { "type": "string", "required": false },
+        "mode": { "type": "string", "required": false },
+        "tags": { "type": "array[string]", "required": false },
+        "agent_id": { "type": "string", "required": false }
+      },
+      "returns": "Updated item object"
+    },
+    "delete_item": {
+      "method": "DELETE",
+      "path": "/items/:id",
+      "description": "Delete an item",
+      "params": {
+        "id": { "type": "string", "required": true, "description": "Item UUID" }
+      },
+      "returns": "204 No Content"
+    }
+  },
+  "item_schema": {
+    "id": "string (UUID, auto-generated)",
+    "type": "\"note\" | \"task\" | \"idea\" | \"goal\" | \"problem\" | \"dream\"",
+    "title": "string",
+    "content": "text (plain text, or JSON for problem type)",
+    "mode": "\"learning\" | \"builder\" | \"money\" | \"life\" | \"dream\"",
+    "tags": "array of strings",
+    "agent_id": "string (UUID) or null",
+    "createdAt": "ISO 8601 timestamp",
+    "updatedAt": "ISO 8601 timestamp"
+  },
+  "problem_template": {
+    "description": "Items of type 'problem' use a structured JSON content format",
+    "fields": {
+      "problem": "What is the problem?",
+      "why": "Why does it exist? (root cause)",
+      "solutions": "Possible solutions (text, can use numbered list)",
+      "action": "Chosen action / decision",
+      "outcome": "Result or outcome (filled in later)"
+    },
+    "example": {
+      "type": "problem",
+      "title": "Context switching friction",
+      "content": "{\"problem\":\"Switching between life modes loses momentum\",\"why\":\"No clear boundaries or transitions\",\"solutions\":\"1. Mode-specific views\\n2. Ritual prompts\",\"action\":\"Build mode-specific views\",\"outcome\":\"\"}",
+      "mode": "life"
+    }
+  }
+}

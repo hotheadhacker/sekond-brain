@@ -34,9 +34,16 @@ export default function ItemCard({ item, onMutate, isDream }) {
       <div className={cardClass}>
         <div className="item-header">
           <span className="item-title">{item.title}</span>
-          <span className={`item-type-badge item-type-badge--${item.type}`}>
-            {item.type}
-          </span>
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            {item.agent_id && (
+              <span className="item-agent" title={`Agent: ${item.agent_id}`}>
+                &#129302;
+              </span>
+            )}
+            <span className={`item-type-badge item-type-badge--${item.type}`}>
+              {item.type}
+            </span>
+          </div>
         </div>
 
         {isProblem && parsedContent ? (
