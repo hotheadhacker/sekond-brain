@@ -3,23 +3,14 @@ import { updateItem } from '../api';
 
 export default function ProblemEditor({ item, onClose }) {
   const parseContent = () => {
-    try {
-      return JSON.parse(item.content);
-    } catch {
-      return {
-        problem: '',
-        why: '',
-        solutions: '',
-        action: '',
-        outcome: '',
-      };
-    }
+    try { return JSON.parse(item.content); }
+    catch { return { problem: '', why: '', solutions: '', action: '', outcome: '' }; }
   };
 
   const [fields, setFields] = useState(parseContent);
 
   const handleChange = (key, value) => {
-    setFields((prev) => ({ ...prev, [key]: value }));
+    setFields(prev => ({ ...prev, [key]: value }));
   };
 
   const handleSave = async () => {
@@ -43,16 +34,9 @@ export default function ProblemEditor({ item, onClose }) {
           <div className="modal-field" key={key}>
             <label>{label}</label>
             {key === 'solutions' ? (
-              <textarea
-                value={fields[key]}
-                onChange={(e) => handleChange(key, e.target.value)}
-                rows={4}
-              />
+              <textarea value={fields[key]} onChange={(e) => handleChange(key, e.target.value)} rows={4} />
             ) : (
-              <input
-                value={fields[key]}
-                onChange={(e) => handleChange(key, e.target.value)}
-              />
+              <input value={fields[key]} onChange={(e) => handleChange(key, e.target.value)} />
             )}
           </div>
         ))}

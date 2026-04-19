@@ -1,15 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { createItem } from '../api';
 
-const PREFIX_MAP = {
-  't:': 'task',
-  'n:': 'note',
-  'i:': 'idea',
-};
+const PREFIX_MAP = { 't:': 'task', 'n:': 'note', 'i:': 'idea' };
 
 export default function Capture({ onCreated }) {
   const [value, setValue] = useState('');
   const [mode, setMode] = useState('life');
+  const inputRef = useRef(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,40 +23,27 @@ export default function Capture({ onCreated }) {
       }
     }
 
-    await createItem({ type, title, content: '', mode, tags: [] });
+    await createItem({ type, title, content: '', mode, tags: [], status: type === 'task' ? 'active' : 'active' });
     setValue('');
     onCreated();
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="capture-form">
-        <input
-          className="capture-input"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="Capture a thought... (t: task, n: note, i: idea)"
-          autoFocus
-        />
-        <select
-          value={mode}
-          onChange={(e) => setMode(e.target.value)}
-          className="btn btn-secondary"
-          style={{ minWidth: 0 }}
-        >
-          <option value="life">Life</option>
-          <option value="learning">Learning</option>
-          <option value="builder">Builder</option>
-          <option value="money">Money</option>
-          <option value="dream">Dream</option>
-        </select>
-      </div>
-      <div className="capture-hints">
-        <span className="capture-hint-prefix">t:</span> task &nbsp;
-        <span className="capture-hint-prefix">n:</span> note &nbsp;
-        <span className="capture-hint-prefix">i:</span> idea &nbsp;
-        <span style={{ color: '#666' }}>— no prefix = note</span>
-      </div>
+    <form className="capture-inline" onSubmit={handleSubmit}>
+      <input
+        ref={inputRef}
+        className="capture-inline-input"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Quick capture... (t: task, n: note, i: idea) or Ctrl+P for command palette"
+      />
+      <select value={mode} onChange={(e) => setMode(e.target.value)} className="meta-select-sm">
+        <option value="life">Life</option>
+        <option value="learning">Learning</option>
+        <option value="builder">Builder</option>
+        <option value="money">Money</option>
+        <option value="dream">Dream</option>
+      </select>
     </form>
   );
 }

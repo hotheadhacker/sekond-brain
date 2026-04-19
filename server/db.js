@@ -17,6 +17,8 @@ db.exec(`
     content TEXT NOT NULL DEFAULT '',
     mode TEXT NOT NULL DEFAULT 'life',
     tags TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'active',
+    folder TEXT NOT NULL DEFAULT '',
     agent_id TEXT,
     createdAt TEXT NOT NULL,
     updatedAt TEXT NOT NULL
@@ -24,18 +26,43 @@ db.exec(`
 `);
 
 db.exec(`
-  CREATE TABLE IF NOT EXISTS agents (
+  CREATE TABLE IF NOT EXISTS links (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    last_seen TEXT NOT NULL
+    source_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    context TEXT NOT NULL DEFAULT '',
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (source_id) REFERENCES items(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_id) REFERENCES items(id) ON DELETE CASCADE
   )
 `);
 
-const itemCols = ['id', 'type', 'title', 'content', 'mode', 'tags', 'agent_id', 'createdAt', 'updatedAt'];
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_links_source ON links(source_id)
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_id)
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_items_mode ON items(mode)
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_items_type ON items(type)
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_items_status ON items(status)
+`);
+
+// --- Items ---
+
+const ITEM_COLS = ['id', 'type', 'title', 'content', 'mode', 'tags', 'status', 'folder', 'agent_id', 'createdAt', 'updatedAt'];
 
 export function getAllItems(filters = {}) {
-  let query = `SELECT ${itemCols.join(', ')} FROM items WHERE 1=1`;
+  let query = `SELECT ${ITEM_COLS.join(', ')} FROM items WHERE 1=1`;
   const params = [];
 
   if (filters.mode) {
@@ -56,8 +83,17 @@ export function getAllItems(filters = {}) {
     query += ' AND agent_id = ?';
     params.push(filters.agent_id);
   }
+  if (filters.status) {
+    const statuses = filters.status.split(',');
+    query += ` AND status IN (${statuses.map(() => '?').join(',')})`;
+    params.push(...statuses);
+  }
+  if (filters.folder) {
+    query += ' AND folder = ?';
+    params.push(filters.folder);
+  }
 
-  query += ' ORDER BY createdAt DESC';
+  query += ' ORDER BY updatedAt DESC';
   const rows = db.prepare(query).all(...params);
   return rows.map(row => ({
     ...row,
@@ -67,7 +103,7 @@ export function getAllItems(filters = {}) {
 }
 
 export function getItemById(id) {
-  const row = db.prepare(`SELECT ${itemCols.join(', ')} FROM items WHERE id = ?`).get(id);
+  const row = db.prepare(`SELECT ${ITEM_COLS.join(', ')} FROM items WHERE id = ?`).get(id);
   if (!row) return null;
   return { ...row, tags: JSON.parse(row.tags), agent_id: row.agent_id || null };
 }
@@ -81,15 +117,22 @@ export function createItem(item) {
     content: item.content || '',
     mode: item.mode || 'life',
     tags: JSON.stringify(item.tags || []),
+    status: item.status || 'active',
+    folder: item.folder || '',
     agent_id: item.agent_id || null,
     createdAt: now,
     updatedAt: now,
   };
   db.prepare(`
-    INSERT INTO items (id, type, title, content, mode, tags, agent_id, createdAt, updatedAt)
-    VALUES (@id, @type, @title, @content, @mode, @tags, @agent_id, @createdAt, @updatedAt)
+    INSERT INTO items (id, type, title, content, mode, tags, status, folder, agent_id, createdAt, updatedAt)
+    VALUES (@id, @type, @title, @content, @mode, @tags, @status, @folder, @agent_id, @createdAt, @updatedAt)
   `).run(row);
-  return { ...row, tags: item.tags || [], agent_id: row.agent_id };
+
+  const result = { ...row, tags: item.tags || [], agent_id: row.agent_id };
+  if (row.content) {
+    syncLinks(row.id, row.content);
+  }
+  return result;
 }
 
 export function updateItem(id, updates) {
@@ -106,12 +149,8 @@ export function updateItem(id, updates) {
 
   db.prepare(`
     UPDATE items SET
-      type = @type,
-      title = @title,
-      content = @content,
-      mode = @mode,
-      tags = @tags,
-      agent_id = @agent_id,
+      type = @type, title = @title, content = @content, mode = @mode,
+      tags = @tags, status = @status, folder = @folder, agent_id = @agent_id,
       updatedAt = @updatedAt
     WHERE id = @id
   `).run({
@@ -120,12 +159,83 @@ export function updateItem(id, updates) {
     agent_id: merged.agent_id || null,
   });
 
+  if (updates.content !== undefined) {
+    syncLinks(id, merged.content);
+  }
+
   return merged;
 }
 
 export function deleteItem(id) {
+  db.prepare('DELETE FROM links WHERE source_id = ? OR target_id = ?').run(id, id);
   const result = db.prepare('DELETE FROM items WHERE id = ?').run(id);
   return result.changes > 0;
+}
+
+// --- Links ---
+
+const WIKILINK_RE = /\[\[([a-f0-9-]{36})\|([^\]]+)\]\]/g;
+
+function syncLinks(itemId, content) {
+  db.prepare('DELETE FROM links WHERE source_id = ?').run(itemId);
+
+  const links = [];
+  let match;
+  const re = new RegExp(WIKILINK_RE.source, WIKILINK_RE.flags);
+  while ((match = re.exec(content)) !== null) {
+    links.push({ targetId: match[1], context: match[2] });
+  }
+
+  const now = new Date().toISOString();
+  const insert = db.prepare('INSERT INTO links (id, source_id, target_id, context, createdAt) VALUES (?, ?, ?, ?, ?)');
+  for (const link of links) {
+    const existing = db.prepare('SELECT id FROM items WHERE id = ?').get(link.targetId);
+    if (existing) {
+      insert.run(crypto.randomUUID(), itemId, link.targetId, link.context, now);
+    }
+  }
+}
+
+export function getBacklinks(itemId) {
+  const rows = db.prepare(`
+    SELECT l.*, i.title, i.type, i.mode, i.status
+    FROM links l
+    JOIN items i ON l.source_id = i.id
+    WHERE l.target_id = ?
+    ORDER BY l.createdAt DESC
+  `).all(itemId);
+  return rows;
+}
+
+export function getOutlinks(itemId) {
+  const rows = db.prepare(`
+    SELECT l.*, i.title, i.type, i.mode, i.status
+    FROM links l
+    JOIN items i ON l.target_id = i.id
+    WHERE l.source_id = ?
+    ORDER BY l.createdAt DESC
+  `).all(itemId);
+  return rows;
+}
+
+export function getGraph() {
+  const nodes = db.prepare('SELECT id, title, type, mode, status FROM items').all();
+  const edges = db.prepare('SELECT source_id AS source, target_id AS target FROM links').all();
+  return { nodes, edges };
+}
+
+export function getAllTags() {
+  const rows = db.prepare('SELECT tags FROM items').all();
+  const tagCounts = {};
+  for (const row of rows) {
+    const tags = JSON.parse(row.tags);
+    for (const tag of tags) {
+      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+    }
+  }
+  return Object.entries(tagCounts)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 // --- Agents ---
@@ -137,9 +247,7 @@ export function registerAgent(agent) {
 
   if (existing) {
     db.prepare('UPDATE agents SET name = ?, last_seen = ? WHERE id = ?').run(
-      agent.name || existing.name,
-      now,
-      id
+      agent.name || existing.name, now, id
     );
     return { id, name: agent.name || existing.name, created_at: existing.created_at, last_seen: now };
   }

@@ -2,7 +2,11 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getAllItems, getItemById, createItem, updateItem, deleteItem, registerAgent, getAgent, getAllAgents } from './db.js';
+import {
+  getAllItems, getItemById, createItem, updateItem, deleteItem,
+  getBacklinks, getOutlinks, getGraph, getAllTags,
+  registerAgent, getAgent, getAllAgents
+} from './db.js';
 import { readdirSync, readFileSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,6 +26,8 @@ app.get('/api/items', (req, res) => {
   if (req.query.type) filters.type = req.query.type;
   if (req.query.q) filters.q = req.query.q;
   if (req.query.agent_id) filters.agent_id = req.query.agent_id;
+  if (req.query.status) filters.status = req.query.status;
+  if (req.query.folder) filters.folder = req.query.folder;
   res.json(getAllItems(filters));
 });
 
@@ -48,6 +54,28 @@ app.delete('/api/items/:id', (req, res) => {
   res.status(204).end();
 });
 
+// --- Links ---
+
+app.get('/api/items/:id/backlinks', (req, res) => {
+  res.json(getBacklinks(req.params.id));
+});
+
+app.get('/api/items/:id/outlinks', (req, res) => {
+  res.json(getOutlinks(req.params.id));
+});
+
+// --- Graph ---
+
+app.get('/api/graph', (_req, res) => {
+  res.json(getGraph());
+});
+
+// --- Tags ---
+
+app.get('/api/tags', (_req, res) => {
+  res.json(getAllTags());
+});
+
 // --- Agents ---
 
 app.post('/api/agents', (req, res) => {
@@ -55,7 +83,7 @@ app.post('/api/agents', (req, res) => {
   res.status(201).json(agent);
 });
 
-app.get('/api/agents', (req, res) => {
+app.get('/api/agents', (_req, res) => {
   res.json(getAllAgents());
 });
 
@@ -78,60 +106,43 @@ app.get('/api/skills', (_req, res) => {
       try {
         const manifest = JSON.parse(readFileSync(path.join(SKILLS_DIR, name, 'manifest.json'), 'utf-8'));
         return { name: manifest.name, version: manifest.version, description: manifest.description };
-      } catch {
-        return null;
-      }
+      } catch { return null; }
     }).filter(Boolean);
     res.json(skills);
-  } catch {
-    res.json([]);
-  }
+  } catch { res.json([]); }
 });
 
 app.get('/api/skills/:name/manifest', (req, res) => {
   try {
-    const manifestPath = path.join(SKILLS_DIR, req.params.name, 'manifest.json');
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    const manifest = JSON.parse(readFileSync(path.join(SKILLS_DIR, req.params.name, 'manifest.json'), 'utf-8'));
     res.json(manifest);
-  } catch {
-    res.status(404).json({ error: 'Skill not found' });
-  }
+  } catch { res.status(404).json({ error: 'Skill not found' }); }
 });
 
 app.get('/api/skills/:name/docs', (req, res) => {
   try {
-    const docsPath = path.join(SKILLS_DIR, req.params.name, 'docs.md');
-    const docs = readFileSync(docsPath, 'utf-8');
+    const docs = readFileSync(path.join(SKILLS_DIR, req.params.name, 'docs.md'), 'utf-8');
     res.type('text/markdown').send(docs);
-  } catch {
-    res.status(404).json({ error: 'Docs not found for this skill' });
-  }
+  } catch { res.status(404).json({ error: 'Docs not found' }); }
 });
 
 app.get('/api/skills/check-updates', (req, res) => {
   try {
     const dirs = readdirSync(SKILLS_DIR, { withFileTypes: true })
-      .filter(d => d.isDirectory())
-      .map(d => d.name);
+      .filter(d => d.isDirectory()).map(d => d.name);
     const skills = dirs.map(name => {
       try {
         const manifest = JSON.parse(readFileSync(path.join(SKILLS_DIR, name, 'manifest.json'), 'utf-8'));
         return { name: manifest.name, version: manifest.version };
-      } catch {
-        return null;
-      }
+      } catch { return null; }
     }).filter(Boolean);
-
     const clientVersions = req.query.versions ? JSON.parse(req.query.versions) : {};
     const updates = skills.filter(s => {
-      const clientVersion = clientVersions[s.name];
-      return !clientVersion || clientVersion !== s.version;
+      const cv = clientVersions[s.name];
+      return !cv || cv !== s.version;
     });
-
     res.json({ latest: skills, updates_available: updates });
-  } catch {
-    res.json({ latest: [], updates_available: [] });
-  }
+  } catch { res.json({ latest: [], updates_available: [] }); }
 });
 
 // --- Static / SPA ---
