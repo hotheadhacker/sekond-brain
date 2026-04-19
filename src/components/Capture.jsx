@@ -1,34 +1,33 @@
 import { useState, useRef } from 'react';
 import { createItem } from '../api';
 
-const PREFIX_MAP = { 't:': 'task', 'n:': 'note', 'i:': 'idea' };
-
 export default function Capture({ onCreated }) {
   const [value, setValue] = useState('');
+  const [type, setType] = useState('note');
   const [mode, setMode] = useState('life');
   const [creating, setCreating] = useState(false);
   const inputRef = useRef(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const raw = value.trim();
-    if (!raw) return;
-
-    let type = 'note';
-    let title = raw;
-    for (const [prefix, t] of Object.entries(PREFIX_MAP)) {
-      if (raw.startsWith(prefix)) {
-        type = t;
-        title = raw.slice(prefix.length).trim();
-        break;
-      }
-    }
+    const title = value.trim();
+    if (!title || creating) return;
 
     setCreating(true);
     try {
-      const item = await createItem({ type, title, content: '', mode, tags: [], status: 'active' });
+      const item = await createItem({
+        type,
+        title,
+        content: '',
+        mode,
+        tags: [],
+        status: 'active',
+        folder: '',
+      });
       setValue('');
       if (onCreated) onCreated(item.id);
+    } catch (e) {
+      console.error('Capture failed:', e);
     } finally {
       setCreating(false);
     }
@@ -41,9 +40,17 @@ export default function Capture({ onCreated }) {
         className="capture-inline-input"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Quick capture... (t: task, n: note, i: idea)"
+        placeholder="Quick capture..."
         disabled={creating}
       />
+      <select value={type} onChange={(e) => setType(e.target.value)} className="meta-select-sm">
+        <option value="note">Note</option>
+        <option value="task">Task</option>
+        <option value="idea">Idea</option>
+        <option value="goal">Goal</option>
+        <option value="problem">Problem</option>
+        <option value="dream">Dream</option>
+      </select>
       <select value={mode} onChange={(e) => setMode(e.target.value)} className="meta-select-sm">
         <option value="life">Life</option>
         <option value="learning">Learning</option>

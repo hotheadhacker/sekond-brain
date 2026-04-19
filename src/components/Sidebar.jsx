@@ -2,43 +2,128 @@ import { useState, useEffect, useRef } from 'react';
 import { fetchItems, createItem } from '../api';
 
 const MODES = [
-  { key: 'all', label: 'All', color: '#e8e8e8' },
   { key: 'life', label: 'Life', color: '#22c55e' },
-  { key: 'learning', label: 'Learn', color: '#60a5fa' },
-  { key: 'builder', label: 'Build', color: '#f59e0b' },
+  { key: 'learning', label: 'Learning', color: '#60a5fa' },
+  { key: 'builder', label: 'Builder', color: '#f59e0b' },
   { key: 'money', label: 'Money', color: '#4ade80' },
   { key: 'dream', label: 'Dream', color: '#a855f7' },
 ];
 
-const TYPES = ['all', 'note', 'task', 'idea', 'goal', 'problem', 'dream'];
-const STATUSES = ['all', 'active', 'done', 'someday', 'archived'];
+const TYPE_ICONS = {
+  note: '\uD83D\uDCDD', task: '\u2611', idea: '\uD83D\uDCA1',
+  goal: '\uD83C\uDFAF', problem: '\u26A0', dream: '\u2728',
+};
+
+const FOLDER_ICON = '\uD83D\uDCC2';
+
+function buildTree(items) {
+  const tree = {};
+  for (const mode of MODES) {
+    tree[mode.key] = { folders: {}, items: [] };
+  }
+
+  for (const item of items) {
+    const mode = item.mode || 'life';
+    if (!tree[mode]) tree[mode] = { folders: {}, items: [] };
+
+    if (!item.folder) {
+      tree[mode].items.push(item);
+    } else {
+      const parts = item.folder.split('/').filter(Boolean);
+      let current = tree[mode].folders;
+      for (const part of parts) {
+        if (!current[part]) current[part] = { folders: {}, items: [] };
+        current = current[part].folders;
+      }
+      current._items = current._items || [];
+      current._items.push(item);
+    }
+  }
+
+  return tree;
+}
+
+function FolderNode({ name, node, depth, selectedId, onSelect, expanded, onToggle }) {
+  const folderItems = node.items || [];
+  const folderKeys = Object.keys(node.folders || {}).filter(k => k !== '_items');
+  const allItems = [...folderItems, ...(node._items || [])];
+  const isExpanded = expanded.has(name);
+
+  return (
+    <div className="tree-node">
+      <div
+        className="tree-folder"
+        style={{ paddingLeft: `${12 + depth * 16}px` }}
+        onClick={() => onToggle(name)}
+      >
+        <span className={`tree-arrow ${isExpanded ? 'expanded' : ''}`}>›</span>
+        <span className="tree-folder-icon">{FOLDER_ICON}</span>
+        <span className="tree-folder-name">{name}</span>
+        <span className="tree-folder-count">{allItems.length}</span>
+      </div>
+      {isExpanded && (
+        <div className="tree-children">
+          {folderKeys.map(key => (
+            <FolderNode
+              key={key}
+              name={key}
+              node={node.folders[key]}
+              depth={depth + 1}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              expanded={expanded}
+              onToggle={onToggle}
+            />
+          ))}
+          {(node._items || []).map(item => (
+            <TreeItem
+              key={item.id}
+              item={item}
+              depth={depth + 1}
+              selectedId={selectedId}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TreeItem({ item, depth, selectedId, onSelect }) {
+  return (
+    <div
+      className={`tree-item ${selectedId === item.id ? 'active' : ''} ${item.status === 'done' ? 'done' : ''}`}
+      style={{ paddingLeft: `${12 + depth * 16}px` }}
+      onClick={() => onSelect(item.id)}
+    >
+      <span className="tree-item-icon">{TYPE_ICONS[item.type] || '\u{1F4DD}'}</span>
+      <span className="tree-item-title">{item.title}</span>
+      {item.status === 'done' && <span className="tree-item-check">\u2713</span>}
+    </div>
+  );
+}
 
 export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey }) {
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState('');
-  const [modeFilter, setModeFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [expanded, setExpanded] = useState(new Set(MODES.map(m => m.key)));
   const [showNewForm, setShowNewForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newType, setNewType] = useState('note');
   const [newMode, setNewMode] = useState('life');
+  const [newFolder, setNewFolder] = useState('');
   const [creating, setCreating] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
     const filters = {};
-    if (modeFilter !== 'all') filters.mode = modeFilter;
-    if (typeFilter !== 'all') filters.type = typeFilter;
-    if (statusFilter !== 'all') filters.status = statusFilter;
     if (search.trim()) filters.q = search.trim();
     fetchItems(filters).then(setItems);
-  }, [refreshKey, modeFilter, typeFilter, statusFilter, search]);
+  }, [refreshKey, search]);
 
   useEffect(() => {
-    if (showNewForm && inputRef.current) {
-      inputRef.current.focus();
-    }
+    if (showNewForm && inputRef.current) inputRef.current.focus();
   }, [showNewForm]);
 
   const handleCreate = async (e) => {
@@ -53,8 +138,10 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
         mode: newMode,
         tags: [],
         status: 'active',
+        folder: newFolder.trim(),
       });
       setNewTitle('');
+      setNewFolder('');
       setShowNewForm(false);
       onMutate();
       onSelectItem(item.id);
@@ -63,13 +150,16 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
     }
   };
 
-  const groupedItems = {};
-  const modeOrder = ['life', 'learning', 'builder', 'money', 'dream'];
-  for (const m of modeOrder) { groupedItems[m] = []; }
-  for (const item of items) {
-    if (!groupedItems[item.mode]) groupedItems[item.mode] = [];
-    groupedItems[item.mode].push(item);
-  }
+  const toggleExpanded = (key) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const tree = buildTree(items);
 
   return (
     <div className="sidebar">
@@ -77,7 +167,7 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
         <h2 className="sidebar-logo">Second Brain</h2>
         <button
           className="sidebar-new-btn"
-          onClick={() => { setShowNewForm(!showNewForm); setNewTitle(''); }}
+          onClick={() => { setShowNewForm(!showNewForm); setNewTitle(''); setNewFolder(''); }}
           title="New item"
         >
           +
@@ -111,10 +201,17 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
               <option value="money">Money</option>
               <option value="dream">Dream</option>
             </select>
-            <button type="submit" className="sidebar-new-submit" disabled={!newTitle.trim() || creating}>
-              {creating ? '...' : 'Create'}
-            </button>
           </div>
+          <input
+            className="sidebar-new-input sidebar-folder-input"
+            value={newFolder}
+            onChange={(e) => setNewFolder(e.target.value)}
+            placeholder="Folder (optional, e.g. projects/my-app)"
+            disabled={creating}
+          />
+          <button type="submit" className="sidebar-new-submit" disabled={!newTitle.trim() || creating}>
+            {creating ? 'Creating...' : 'Create'}
+          </button>
         </form>
       )}
 
@@ -127,50 +224,53 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
         />
       </div>
 
-      <div className="sidebar-filters">
-        <div className="filter-row">
-          {MODES.map(m => (
-            <button
-              key={m.key}
-              className={`filter-btn ${modeFilter === m.key ? 'active' : ''}`}
-              onClick={() => setModeFilter(m.key)}
-              style={modeFilter === m.key ? { borderColor: m.color, color: m.color } : {}}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-        <div className="filter-row-sm">
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="meta-select-xs">
-            {TYPES.map(t => <option key={t} value={t}>{t === 'all' ? 'All types' : t}</option>)}
-          </select>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="meta-select-xs">
-            {STATUSES.map(s => <option key={s} value={s}>{s === 'all' ? 'All status' : s}</option>)}
-          </select>
-        </div>
-      </div>
+      <div className="sidebar-tree">
+        {MODES.map(mode => {
+          const modeData = tree[mode.key];
+          if (!modeData) return null;
+          const totalItems = modeData.items.length + countFolderItems(modeData.folders);
+          if (totalItems === 0 && search) return null;
+          const isExpanded = expanded.has(mode.key);
 
-      <div className="sidebar-items">
-        {modeOrder.map(mode => {
-          const modeItems = groupedItems[mode] || [];
-          if (modeItems.length === 0 && modeFilter !== 'all') return null;
           return (
-            <div key={mode} className="sidebar-group">
-              <div className="sidebar-group-label">
-                <span className="mode-dot" style={{ background: MODES.find(m => m.key === mode)?.color }}></span>
-                {MODES.find(m => m.key === mode)?.label} <span className="sidebar-group-count">{modeItems.length}</span>
+            <div key={mode.key} className="tree-mode-group">
+              <div
+                className="tree-mode-label"
+                onClick={() => toggleExpanded(mode.key)}
+              >
+                <span className={`tree-arrow ${isExpanded ? 'expanded' : ''}`}>›</span>
+                <span className="mode-dot" style={{ background: mode.color }}></span>
+                <span className="tree-mode-name">{mode.label}</span>
+                <span className="tree-mode-count">{totalItems}</span>
               </div>
-              {modeItems.map(item => (
-                <div
-                  key={item.id}
-                  className={`sidebar-item ${selectedId === item.id ? 'active' : ''} ${item.status === 'done' ? 'done' : ''}`}
-                  onClick={() => onSelectItem(item.id)}
-                >
-                  <span className={`sidebar-item-type type-${item.type}`}>{typeIcon(item.type)}</span>
-                  <span className="sidebar-item-title">{item.title}</span>
-                  {item.status === 'done' && <span className="sidebar-item-check">&#10003;</span>}
+              {isExpanded && (
+                <div className="tree-children">
+                  {Object.keys(modeData.folders).map(folderKey => (
+                    <FolderNode
+                      key={folderKey}
+                      name={folderKey}
+                      node={modeData.folders[folderKey]}
+                      depth={1}
+                      selectedId={selectedId}
+                      onSelect={onSelectItem}
+                      expanded={expanded}
+                      onToggle={toggleExpanded}
+                    />
+                  ))}
+                  {modeData.items.map(item => (
+                    <TreeItem
+                      key={item.id}
+                      item={item}
+                      depth={1}
+                      selectedId={selectedId}
+                      onSelect={onSelectItem}
+                    />
+                  ))}
+                  {totalItems === 0 && (
+                    <div className="tree-empty" style={{ paddingLeft: '28px' }}>Empty</div>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
           );
         })}
@@ -185,7 +285,15 @@ export default function Sidebar({ onSelectItem, selectedId, onMutate, refreshKey
   );
 }
 
-function typeIcon(type) {
-  const icons = { note: '\u{1F4DD}', task: '\u2611', idea: '\u{1F4A1}', goal: '\u{1F3AF}', problem: '\u26A0', dream: '\u2728' };
-  return icons[type] || '\u{1F4DD}';
+function countFolderItems(folders) {
+  let count = 0;
+  for (const key of Object.keys(folders)) {
+    if (key === '_items') {
+      count += folders._items.length;
+    } else {
+      count += (folders[key]._items || []).length;
+      count += countFolderItems(folders[key].folders || {});
+    }
+  }
+  return count;
 }
